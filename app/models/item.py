@@ -18,4 +18,4 @@ class Items(Base):
                                            cascade="all, delete-orphan")
 
     def __str__(self):
-        return f"Item {self.id = }  {self.url = }  {self.type = } {self.size = }  {self.date = }"
+        return f"Item {self.id = }  {self.url = }  {self.type = } {self.size = }  {self.date = }    {self.children = }"

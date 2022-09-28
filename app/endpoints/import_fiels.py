@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload
 from app.utils.delete import delete_from_dict
 from app.schems import ItemRequestData, ItemResponseData
 from app.utils.items.utils import check_in_base, get_or_404, select_all_fiels_id, update_size_by_files_id
+from dateutil import parser
 
 router = APIRouter(
     prefix="",
@@ -26,7 +27,9 @@ async def create(
         for item in model.items:
             in_base, res = await check_in_base(session, Items, item.id)
             if item.parent_id:
+                # Проверка что мы не пытаемся добавить к несуществующему родителю
                 await get_or_404(session, Items, item.parent_id)
+
             if in_base:
                 data = item.dict()
                 del data["id"]
@@ -42,39 +45,43 @@ async def create(
                     values(**item.dict()). \
                     returning(literal_column("*"))
 
-            await session.execute(query)
 
             old_size = 0  # Необходим для того что бы при обновлении размера файла
             if item.type == "FILE":
                 if in_base:
                     old_size = res.size
+
                 files_data.add((item.id, old_size))
+
+            await session.execute(query)
+
 
         await update_size_by_files_id(session, files_data)
 
         await session.commit()
 
 
-@router.delete('/delete/{id}',
-               status_code=status.HTTP_204_NO_CONTENT,
-               )
-async def delete(request: Request, id: str, date: datetime.datetime):
-    query = sa_delete(Items).where(Items.id == id)
+@router.delete('/delete/{id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete(request: Request, item_id: str, date: datetime.datetime):
+    query = sa_delete(Items).where(Items.id == item_id)
 
     async with request.app.state.db.get_session() as session:
-        res = await get_or_404(session, Items, id)
+        res = await get_or_404(session, Items, item_id)
         minus_size = res.size
         res = res.parent_id
 
-        delete_from_dict(request.app.tree, id)
-
+        # delete_from_dict(request.app.tree, item_id)
+        print("Start")
         while res:
+
             update_parent = sa_update(Items). \
                 where(Items.id == res). \
                 values(date=date.replace(tzinfo=None), size=Items.size - minus_size). \
                 returning(literal_column("parent_id"))
 
+
             res = (await session.execute(update_parent)).scalars().first()
+            print(res)
         await session.execute(query)
         await session.commit()
 
@@ -89,12 +96,11 @@ async def get_files(request: Request):
 @router.get('/nodes/{id}', response_model=ItemResponseData, status_code=status.HTTP_200_OK)
 async def get_files(id: str, request: Request):
     async with request.app.state.db.get_session() as session:
-
         query = select(Items).where(Items.id == id).options(joinedload(Items.children))
         res = await session.execute(query)
         root = res.scalars().first()
-
         stack = [*root.children]
+
         while stack:
             cur = stack.pop()
             if not cur:
@@ -102,9 +108,21 @@ async def get_files(id: str, request: Request):
             query = select(Items).where(Items.id == cur.id).options(joinedload(Items.children))
             res = await session.execute(query)
             temp = res.scalars().first()
+            print(temp)
             for i in temp.children:
                 stack.append(i)
+            # print(f"{stack=}")
+            # print("%"*150)
+    # print("hahaha")
     return root
 
 
-
+@router.get('/updates', response_model=ItemResponseData, status_code=200)
+async def updates(date: str, request: Request):
+    async with request.app.state.db.get_session() as session:
+        query = select(Items).where(Items.date <= parser.parse(date),
+                                    Items.date >= parser.parse(date) - datetime.timedelta(
+                                        hours=24))
+        res = await session.execute(query)
+        res = res.scalars().all()
+    return res

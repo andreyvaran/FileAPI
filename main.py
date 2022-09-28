@@ -25,7 +25,6 @@ def bind_events(app: FastAPI, db_settings: dict) -> None:
         # await db.init_db(Base)
         app.state.db = db
         app.tree = dict()
-        app.calculated = set()
 
     @app.on_event("shutdown")
     async def close_engine():
@@ -54,5 +53,5 @@ if __name__ == '__main__':
     uvicorn.run(
         app,
         host="127.0.0.1",
-        port=80,
+        port=8080,
     )

@@ -40,12 +40,16 @@ async def select_all_fiels_id(session):
 
 
 async def update_size_by_files_id(session, files_data: Set[Tuple[str, int]]) -> None:
-    for file_data in files_data:
 
-        res = await session.get(Items, file_data[0])
-        add_size = res.size - file_data[1]
-        res = res.parent_id
-        while res:
-            update_parent = update(Items).where(Items.id == res).values(size=Items.size + add_size).returning(
+    for file_data in files_data:
+        print("We are here ")
+        print(file_data)
+        parent = await session.get(Items, file_data[0])
+        print(f"{parent.size}")
+        add_size = parent.size - file_data[1]
+        print(f"we want to add {add_size=}")
+        parent = parent.parent_id
+        while parent:
+            update_parent = update(Items).where(Items.id == parent).values(size=Items.size + add_size).returning(
                 literal_column("parent_id"))
-            res = (await session.execute(update_parent)).scalars().first()
+            parent = (await session.execute(update_parent)).scalars().first()

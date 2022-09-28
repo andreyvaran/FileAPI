@@ -1,7 +1,8 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, root_validator
 from datetime import datetime
 from enum import Enum
 from typing import List
+from fastapi import HTTPException
 
 
 class SystemItemType(str, Enum):
@@ -9,7 +10,7 @@ class SystemItemType(str, Enum):
     FOLDER = "FOLDER"
 
 
-class ItemData(BaseModel):
+class InternalItemData(BaseModel):
     id: str
     url: str | None = None
     date: datetime | None
@@ -21,7 +22,22 @@ class ItemData(BaseModel):
         orm_mode = True
 
 
-class ItemResponseData(ItemData):
+class ItemData(BaseModel):
+    id: str
+    url: str | None = None
+    parent_id: str | None = None
+    type: SystemItemType
+    date: datetime | None
+    size: int | None = 0
+
+    @root_validator
+    def checker(cls, v):
+        if v.get('type').value == "FILE" and (v.get('size') <= 0 or len(v.get('url')) > 255):
+            raise HTTPException(400, detail="Validation Failed")
+        return v
+
+
+class ItemResponseData(InternalItemData):
     children: List | None = []
 
     @validator("children")
@@ -35,8 +51,8 @@ class ItemResponseData(ItemData):
 
 
 class ItemRequestData(BaseModel):
-    items : List[ItemData]
-    updateDate : datetime
+    items: List[ItemData]
+    updateDate: datetime
 
     class Config:
         orm_mode = True
